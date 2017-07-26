@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
+
+PLUGIN_BASE_PATH="$PLUGIN_PATH"
+if [[ -n $DOKKU_API_VERSION ]]; then
+  PLUGIN_BASE_PATH="$PLUGIN_ENABLED_PATH"
+fi
+source "$PLUGIN_BASE_PATH/common/functions"
+
+DOKKU_SYSLOG_ROOT="$DOKKU_ROOT/.syslog"
+[[ -f "$DOKKU_SYSLOG_ROOT/OPTS" ]] && source "$DOKKU_SYSLOG_ROOT/OPTS"
+
+dokku_syslog_docker_args() {
+  local APP="$1"; local PROC_TYPE="$3"; local CONTAINER_INDEX="$4"; local docker_args STDIN
+  local desc="dokku syslog docker args trigger"
+  case "$0" in
+    *docker-args-deploy)
+      local PHASE=DEPLOY
+      local SYSLOG_TAG="${APP}.${PROC_TYPE}.${CONTAINER_INDEX}"
+      ;;
+    *docker-args-run)
+      local PHASE=RUN
+      local SYSLOG_TAG="${APP}"
+      ;;
+  esac
+
+  STDIN=$(cat)
+  docker_args="$STDIN --log-opt syslog-address=${SYSLOG_SERVER} --log-opt tag=$SYSLOG_TAG"
+  echo -n "$docker_args"
+}
+
+dokku_syslog_docker_args "$@"

@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
+[[ " syslog:info syslog:server syslog:help help " == *" $1 "* ]] || exit "$DOKKU_NOT_IMPLEMENTED_EXIT"
+
+PLUGIN_BASE_PATH="$PLUGIN_PATH"
+if [[ -n $DOKKU_API_VERSION ]]; then
+  PLUGIN_BASE_PATH="$PLUGIN_ENABLED_PATH"
+fi
+source "$PLUGIN_BASE_PATH/common/functions"
+
+DOKKU_SYSLOG_ROOT="$DOKKU_ROOT/.syslog"
+[[ -f "$DOKKU_SYSLOG_ROOT/OPTS" ]] && source "$DOKKU_SYSLOG_ROOT/OPTS"
+
+syslog_info_cmd() {
+  local CID
+  local desc="shows info about syslog config"
+  local cmd="syslog:info"
+  if [[ -f "$DOKKU_SYSLOG_ROOT/OPTS" ]]; then
+    dokku_log_info2_quiet "dokku-syslog config"
+    while read -r line; do
+      [[ $line = *"="* ]] && dokku_log_verbose "$line" | sed -e "s:export ::g"
+    done < "$DOKKU_SYSLOG_ROOT/OPTS"
+  fi
+}
+
+syslog_server_cmd() {
+  local desc="sets external syslogs server url"
+  local cmd="syslog:server"
+  [[ -z $2 ]] && echo "Please specify a syslog url" && exit 1
+  local SYSLOG_SERVER="$2"
+
+  if (grep -q SYSLOG_SERVER "$DOKKU_SYSLOG_ROOT/OPTS"); then
+    grep -v SYSLOG_SERVER "$DOKKU_SYSLOG_ROOT/OPTS" > "$DOKKU_SYSLOG_ROOT/.opts.tmp"
+    mv "$DOKKU_SYSLOG_ROOT/.opts.tmp" "$DOKKU_SYSLOG_ROOT/OPTS"
+    echo "export SYSLOG_SERVER=$SYSLOG_SERVER" >> "$DOKKU_SYSLOG_ROOT/OPTS"
+  else
+    echo "export SYSLOG_SERVER=$SYSLOG_SERVER" >> "$DOKKU_SYSLOG_ROOT/OPTS"
+  fi
+}
+
+case "$1" in
+  syslog:info)
+    syslog_info_cmd "$@"
+    ;;
+
+  syslog:server)
+    syslog_server_cmd "$@"
+    ;;
+
+  help | syslog:help)
+help_content_func () {
+      declare desc="return syslog plugin help content"
+      cat<<help_content
+    syslog:info, show configuration
+    syslog:server <server-url>, set remote syslog server
+help_content
+    }
+
+    if [[ -n $DOKKU_API_VERSION ]]; then
+      if [[ $1 = "syslog:help" ]] ; then
+          echo -e 'Usage: dokku syslog[:COMMAND]'
+          echo ''
+          echo 'Manage syslog integration.'
+          echo ''
+          echo 'Additional commands:'
+          help_content_func | sort | column -c2 -t -s,
+      else
+          help_content_func
+      fi
+    else
+      cat && help_content_func
+    fi
+  ;;
+
+  *)
+    exit "$DOKKU_NOT_IMPLEMENTED_EXIT"
+  ;;
+esac
