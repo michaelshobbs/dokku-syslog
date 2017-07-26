@@ -25,7 +25,8 @@ dokku_syslog_docker_args() {
   esac
 
   STDIN=$(cat)
-  docker_args="$STDIN --log-opt syslog-address=${SYSLOG_SERVER} --log-opt tag=$SYSLOG_TAG"
+  docker_args="$STDIN"
+  [[ -n "${SYSLOG_SERVER}" ]] && docker_args+=" --log-opt syslog-address=${SYSLOG_SERVER} --log-opt tag=${SYSLOG_TAG}"
   echo -n "$docker_args"
 }
 
