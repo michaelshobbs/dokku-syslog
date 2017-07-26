@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -eo pipefail; [[ $DOKKU_TRACE ]] && set -x
-[[ " syslog:info syslog:server syslog:help help " == *" $1 "* ]] || exit "$DOKKU_NOT_IMPLEMENTED_EXIT"
+[[ " syslog:format syslog:info syslog:server syslog:help help " == *" $1 "* ]] || exit "$DOKKU_NOT_IMPLEMENTED_EXIT"
 
 PLUGIN_BASE_PATH="$PLUGIN_PATH"
 if [[ -n $DOKKU_API_VERSION ]]; then
@@ -9,43 +9,75 @@ fi
 source "$PLUGIN_BASE_PATH/common/functions"
 
 DOKKU_SYSLOG_ROOT="$DOKKU_ROOT/.syslog"
-[[ -f "$DOKKU_SYSLOG_ROOT/OPTS" ]] && source "$DOKKU_SYSLOG_ROOT/OPTS"
+DOKKU_SYSLOG_OPTS_FILE="$DOKKU_SYSLOG_ROOT/OPTS"
+[[ ! -d "$DOKKU_SYSLOG_ROOT" ]] && mkdir -p "$DOKKU_SYSLOG_ROOT" && touch "$DOKKU_SYSLOG_OPTS_FILE"
+[[ -f "$DOKKU_SYSLOG_OPTS_FILE" ]] && source "$DOKKU_SYSLOG_OPTS_FILE"
+
+f_set_var() {
+  local var="$1"; local val="$2"
+  if (grep -q "$var" "$DOKKU_SYSLOG_OPTS_FILE"); then
+    grep -v "$var" "$DOKKU_SYSLOG_OPTS_FILE" > "$DOKKU_SYSLOG_ROOT/.opts.tmp" || true
+    mv "$DOKKU_SYSLOG_ROOT/.opts.tmp" "$DOKKU_SYSLOG_OPTS_FILE"
+    echo "export $var=$val" >> "$DOKKU_SYSLOG_OPTS_FILE"
+  else
+    echo "export $var=$val" >> "$DOKKU_SYSLOG_OPTS_FILE"
+  fi
+}
+
+syslog_format_cmd() {
+  local desc="sets external syslog format"
+  local cmd="syslog:format"
+  [[ -z $2 ]] && echo "Please specify a syslog format" && exit 1
+
+  local SYSLOG_FORMAT="$2"
+  case "$SYSLOG_FORMAT" in
+    rfc3164|rfc5424|rfc5424micro)
+    ;;
+    *)
+      dokku_log_fail "syslog format should one of rfc3164, rfc5424, or rfc5424micro; got ${SYSLOG_FORMAT}"
+    ;;
+  esac
+
+  f_set_var SYSLOG_FORMAT "$SYSLOG_FORMAT"
+  syslog_info_cmd
+}
 
 syslog_info_cmd() {
   local CID
   local desc="shows info about syslog config"
   local cmd="syslog:info"
-  if [[ -f "$DOKKU_SYSLOG_ROOT/OPTS" ]]; then
+  if [[ -f "$DOKKU_SYSLOG_OPTS_FILE" ]]; then
     dokku_log_info2_quiet "dokku-syslog config"
     while read -r line; do
       [[ $line = *"="* ]] && dokku_log_verbose "$line" | sed -e "s:export ::g"
-    done < "$DOKKU_SYSLOG_ROOT/OPTS"
+    done < "$DOKKU_SYSLOG_OPTS_FILE" | sort
   fi
 }
 
 syslog_server_cmd() {
-  local desc="sets external syslogs server url"
+  local desc="sets external syslog server url"
   local cmd="syslog:server"
   [[ -z $2 ]] && echo "Please specify a syslog url" && exit 1
-  local SYSLOG_SERVER="$2"
 
-  if (grep -q SYSLOG_SERVER "$DOKKU_SYSLOG_ROOT/OPTS"); then
-    grep -v SYSLOG_SERVER "$DOKKU_SYSLOG_ROOT/OPTS" > "$DOKKU_SYSLOG_ROOT/.opts.tmp"
-    mv "$DOKKU_SYSLOG_ROOT/.opts.tmp" "$DOKKU_SYSLOG_ROOT/OPTS"
-    echo "export SYSLOG_SERVER=$SYSLOG_SERVER" >> "$DOKKU_SYSLOG_ROOT/OPTS"
-  else
-    echo "export SYSLOG_SERVER=$SYSLOG_SERVER" >> "$DOKKU_SYSLOG_ROOT/OPTS"
-  fi
+  local SYSLOG_SERVER="$2"
+  [[ ! "$SYSLOG_SERVER" =~ [a-z]+://.+:[0-9]+ ]] && dokku_log_fail "syslog-address should be in form proto://address, got ${SYSLOG_SERVER}"
+
+  f_set_var SYSLOG_SERVER "$SYSLOG_SERVER"
+  syslog_info_cmd
 }
 
 case "$1" in
+  syslog:format)
+    syslog_format_cmd "$@"
+  ;;
+
   syslog:info)
     syslog_info_cmd "$@"
-    ;;
+  ;;
 
   syslog:server)
     syslog_server_cmd "$@"
-    ;;
+  ;;
 
   help | syslog:help)
 help_content_func () {
@@ -53,6 +85,7 @@ help_content_func () {
       cat<<help_content
     syslog:info, show configuration
     syslog:server <server-url>, set remote syslog server
+    syslog:format <format>, set remote syslog format (i.e. rfc3164, rfc5424, or rfc5424micro)
 help_content
     }
 

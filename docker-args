@@ -13,20 +13,14 @@ DOKKU_SYSLOG_ROOT="$DOKKU_ROOT/.syslog"
 dokku_syslog_docker_args() {
   local APP="$1"; local PROC_TYPE="$3"; local CONTAINER_INDEX="$4"; local docker_args STDIN
   local desc="dokku syslog docker args trigger"
-  case "$0" in
-    *docker-args-deploy)
-      local PHASE=DEPLOY
-      local SYSLOG_TAG="${APP}.${PROC_TYPE}.${CONTAINER_INDEX}"
-      ;;
-    *docker-args-run)
-      local PHASE=RUN
-      local SYSLOG_TAG="${APP}"
-      ;;
-  esac
+  local SYSLOG_TAG=$APP
+  [[ -n "$PROC_TYPE" ]] && SYSLOG_TAG+=".$PROC_TYPE"
+  [[ -n "$CONTAINER_INDEX" ]] && SYSLOG_TAG+=".$CONTAINER_INDEX"
 
+  SYSLOG_FORMAT=${SYSLOG_FORMAT:="rfc5424"}
   STDIN=$(cat)
   docker_args="$STDIN"
-  [[ -n "${SYSLOG_SERVER}" ]] && docker_args+=" --log-opt syslog-address=${SYSLOG_SERVER} --log-opt tag=${SYSLOG_TAG}"
+  [[ -n "${SYSLOG_SERVER}" ]] && docker_args+=" --log-driver syslog --log-opt syslog-address=${SYSLOG_SERVER} --log-opt tag=${SYSLOG_TAG} --log-opt syslog-format=${SYSLOG_FORMAT}"
   echo -n "$docker_args"
 }
 
